@@ -1,0 +1,10 @@
+numpy==1.26.4
+contourpy==1.2.0
+gensim==4.3.3
+numba==0.60.0
+opencv-python
+requests
+imutils
+opencv-python-headless
+ultralytics transformers torch torchvision easyocr
+opencv-python pillow huggingface_hub
