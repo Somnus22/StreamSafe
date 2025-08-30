@@ -23,7 +23,7 @@ st.set_page_config(
 def load_css():
     st.markdown("""
     <style>
-    /* Dark theme styling to match your original design */
+   
     .stApp {
         background-color: #0a0a0a;
         color: #ffffff;
@@ -288,12 +288,7 @@ class VideoProcessor(VideoProcessorBase):
         # This is where the backend CV2/YOLO processing will be integrated
         img = frame.to_ndarray(format="bgr24")
         
-        # Placeholder for actual privacy detection processing
-        # TODO: Integrate with backend when ready
-        if self.detection_enabled['license_plates']:
-            # Placeholder: Add some visual indication
-            cv2.putText(img, "Privacy Protection: ON", (10, 30), 
-                       cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
+
         
         return av.VideoFrame.from_ndarray(img, format="bgr24")
 
