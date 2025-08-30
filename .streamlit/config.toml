@@ -1,0 +1,52 @@
+# .streamlit/config.toml
+[global]
+developmentMode = false
+showWarningOnDirectExecution = false
+
+[server]
+runOnSave = true
+allowRunOnSave = true
+port = 8501
+enableCORS = false
+enableXsrfProtection = true
+maxUploadSize = 200
+maxMessageSize = 200
+enableWebsocketCompression = false
+
+[browser]
+gatherUsageStats = false
+showErrorDetails = false
+
+[theme]
+# Dark theme to match your original design
+primaryColor = "#8b5cf6"
+backgroundColor = "#0a0a0a"
+secondaryBackgroundColor = "#1f2937"
+textColor = "#ffffff"
+font = "sans serif"
+
+[client]
+caching = true
+displayEnabled = true
+showErrorDetails = false
+
+[runner]
+magicEnabled = true
+installTracer = false
+fixMatplotlib = true
+postScriptGC = true
+fastReruns = true
+enforceSerializableSessionState = false
+
+[logger]
+level = "info"
+messageFormat = "%(asctime)s %(message)s"
+
+# .streamlit/secrets.toml (example - create this file for production)
+# [secrets]
+# USE_MOCK_API = true
+# STREAMSAFE_API_URL = "http://localhost:8000"
+# WEBRTC_ICE_SERVERS = '[{"urls": ["stun:stun.l.google.com:19302"]}]'
+# MAX_UPLOAD_SIZE_MB = 100
+# STREAM_QUALITY_DEFAULT = "720p"
+# ENABLE_ANALYTICS = false
