@@ -57,7 +57,7 @@ StreamSafe is a powerful frontend application built with Streamlit that automati
 4. Watch AI blur sensitive information live!
 
 **📱 For DroidCam:**
-
+Link: https://droidcam.app/
 * Install DroidCam on phone + computer
 * Connect via same WiFi network
 * Use browser camera access (this interface)
