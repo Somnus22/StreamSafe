@@ -70,3 +70,9 @@ The backend implements:
 * **PyTorch** for deep learning model inference
 * **YOLO Ultralytics** for object detection
 * **WebRTC** for real-time video streaming
+
+## 🙏 Acknowledgments & Attribution
+
+This project builds upon excellent open source tools and resources from:
+Roboflow, Ultralytics, and MorseTechLab
+Link: https://huggingface.co/morsetechlab/yolov11-license-plate-detection
