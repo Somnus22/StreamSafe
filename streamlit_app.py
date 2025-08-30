@@ -1,17 +1,6 @@
 import streamlit as st
-import time
-import cv2
-from streamlit_webrtc import webrtc_streamer, VideoProcessorBase, RTCConfiguration
-import av
-import numpy as np
 
-# Import our custom components
-from app.components.cards import privacy_detection_card, stream_controls_card
-from app.components.split_view import create_split_view
-from app.hooks.use_live import LiveStreamState
-from app.lib.utils import format_fps, format_latency
-
-# Page config
+# Page config MUST be first
 st.set_page_config(
     page_title="StreamSafe - Live Privacy Protection",
     page_icon="🛡️",
@@ -19,11 +8,71 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
-# Load custom CSS
+import time
+import subprocess
+import sys
+from streamlit_webrtc import webrtc_streamer, VideoProcessorBase, RTCConfiguration
+import av
+
+# Import our privacy processing logic
+from privacy_processor import StreamSafeProcessor
+
+# Install requirements
+@st.cache_resource
+def install_requirements():
+    packages = ["opencv-python>=4.8.1", "easyocr>=1.6.2", "ultralytics>=8.0.196"]
+    for package in packages:
+        try:
+            subprocess.check_call([
+                sys.executable, "-m", "pip", "install", package, 
+                "--quiet", "--disable-pip-version-check"
+            ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        except:
+            pass
+
+install_requirements()
+
+class StreamSafeVideoProcessor(VideoProcessorBase):
+    """Streamlit WebRTC video processor"""
+    
+    def __init__(self):
+        self.processor = StreamSafeProcessor()
+        self.detection_enabled = {
+            'license_plates': False,
+            'street_signs': False,
+            'block_numbers': False
+        }
+    
+    def update_detection_settings(self, settings):
+        """Update detection settings from Streamlit session state"""
+        self.detection_enabled = settings.copy()
+    
+    def recv(self, frame):
+        """Process each frame with privacy protections"""
+        img = frame.to_ndarray(format="bgr24")
+        processed_img = self.processor.process_frame(img, self.detection_enabled)
+        return av.VideoFrame.from_ndarray(processed_img, format="bgr24")
+
+@st.cache_resource
+def get_processor():
+    """Create global processor instance"""
+    return StreamSafeVideoProcessor()
+
+class LiveStreamState:
+    """Mock live stream state"""
+    def __init__(self):
+        self.is_streaming = False
+        self.fps = 0.0
+        self.latency = 0
+        self.detection_count = 0
+    
+    def start_stream(self):
+        self.is_streaming = True
+
 def load_css():
+    """Load custom CSS styling"""
     st.markdown("""
     <style>
-   
     .stApp {
         background-color: #0a0a0a;
         color: #ffffff;
@@ -46,145 +95,12 @@ def load_css():
         gap: 1rem;
     }
     
-    .logo {
-        font-size: 2rem;
-        color: #8b5cf6;
-    }
-    
-    .app-title {
-        font-size: 1.5rem;
-        font-weight: bold;
-        color: #ffffff;
-        margin: 0;
-    }
-    
-    .app-subtitle {
-        font-size: 0.9rem;
-        color: #9ca3af;
-        margin: 0;
-    }
-    
-    .status-indicator {
-        display: flex;
-        align-items: center;
-        gap: 0.5rem;
-        padding: 0.5rem 1rem;
-        background: rgba(16, 185, 129, 0.1);
-        border: 1px solid #10b981;
-        border-radius: 8px;
-        color: #10b981;
-        font-weight: 500;
-    }
-    
-    .video-container {
+    .video-container, .control-section, .detection-card {
         background: #1f2937;
         border-radius: 12px;
         padding: 1.5rem;
         margin-bottom: 1.5rem;
         border: 1px solid #374151;
-    }
-    
-    .video-placeholder {
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        justify-content: center;
-        height: 300px;
-        background: #111827;
-        border: 2px dashed #374151;
-        border-radius: 8px;
-        color: #9ca3af;
-    }
-    
-    .play-button {
-        font-size: 3rem;
-        color: #6b7280;
-        margin-bottom: 1rem;
-    }
-    
-    .offline-badge {
-        background: #374151;
-        color: #9ca3af;
-        padding: 0.25rem 0.75rem;
-        border-radius: 6px;
-        font-size: 0.75rem;
-        text-transform: uppercase;
-        font-weight: 600;
-    }
-    
-    .online-badge {
-        background: #10b981;
-        color: #ffffff;
-        padding: 0.25rem 0.75rem;
-        border-radius: 6px;
-        font-size: 0.75rem;
-        text-transform: uppercase;
-        font-weight: 600;
-    }
-    
-    .control-section {
-        background: #1f2937;
-        border-radius: 12px;
-        padding: 1.5rem;
-        margin-bottom: 1.5rem;
-        border: 1px solid #374151;
-    }
-    
-    .start-stream-btn {
-        background: linear-gradient(135deg, #8b5cf6 0%, #a855f7 100%);
-        color: white;
-        border: none;
-        padding: 1rem 2rem;
-        border-radius: 8px;
-        font-size: 1.1rem;
-        font-weight: 600;
-        width: 100%;
-        margin-bottom: 1rem;
-        cursor: pointer;
-        transition: all 0.3s ease;
-    }
-    
-    .start-stream-btn:hover {
-        transform: translateY(-2px);
-        box-shadow: 0 8px 25px rgba(139, 92, 246, 0.3);
-    }
-    
-    .external-btn {
-        background: #374151;
-        color: white;
-        border: none;
-        padding: 1rem;
-        border-radius: 8px;
-        font-weight: 600;
-        cursor: pointer;
-        margin-left: 1rem;
-    }
-    
-    .webcam-status {
-        text-align: center;
-        color: #9ca3af;
-        margin-top: 1rem;
-        font-size: 0.9rem;
-    }
-    
-    .detection-card {
-        background: #1f2937;
-        border-radius: 12px;
-        padding: 1.5rem;
-        border: 1px solid #374151;
-    }
-    
-    .detection-header {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        margin-bottom: 1.5rem;
-    }
-    
-    .detection-title {
-        font-size: 1.2rem;
-        font-weight: 600;
-        color: #ffffff;
     }
     
     .ai-powered-badge {
@@ -196,76 +112,20 @@ def load_css():
         font-weight: 600;
     }
     
-    .detection-option {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        padding: 1rem 0;
-        border-bottom: 1px solid #374151;
+    /* Video player size control */
+    video {
+        max-width: 480px !important;
+        max-height: 360px !important;
+        width: 480px !important;
+        height: 360px !important;
     }
     
-    .detection-option:last-child {
-        border-bottom: none;
-    }
-    
-    .option-info {
-        display: flex;
-        align-items: center;
-        gap: 1rem;
-    }
-    
-    .option-icon {
-        font-size: 1.2rem;
-        color: #8b5cf6;
-    }
-    
-    .option-text h4 {
-        margin: 0;
-        color: #ffffff;
-        font-size: 1rem;
-        font-weight: 600;
-    }
-    
-    .option-text p {
-        margin: 0.25rem 0 0 0;
-        color: #9ca3af;
-        font-size: 0.85rem;
-    }
-    
-    .toggle-switch {
-        position: relative;
-        width: 48px;
-        height: 24px;
-        background: #374151;
-        border-radius: 12px;
-        cursor: pointer;
-    }
-    
-    .toggle-switch.active {
-        background: #8b5cf6;
-    }
-    
-    .toggle-switch::after {
-        content: '';
-        position: absolute;
-        width: 20px;
-        height: 20px;
-        border-radius: 50%;
-        background: white;
-        top: 2px;
-        left: 2px;
-        transition: transform 0.3s ease;
-    }
-    
-    .toggle-switch.active::after {
-        transform: translateX(24px);
-    }
-    
-    .detection-note {
-        text-align: center;
-        color: #6b7280;
-        margin-top: 1.5rem;
-        font-size: 0.85rem;
+    /* WebRTC video container */
+    .stVideo > video {
+        max-width: 480px !important;
+        max-height: 360px !important;
+        width: 480px !important;
+        height: 360px !important;
     }
     
     /* Hide Streamlit default elements */
@@ -275,25 +135,8 @@ def load_css():
     </style>
     """, unsafe_allow_html=True)
 
-# Video processor for WebRTC
-class VideoProcessor(VideoProcessorBase):
-    def __init__(self):
-        self.detection_enabled = {
-            'license_plates': True,
-            'street_signs': True,
-            'block_numbers': False
-        }
-    
-    def recv(self, frame):
-        # This is where the backend CV2/YOLO processing will be integrated
-        img = frame.to_ndarray(format="bgr24")
-        
-
-        
-        return av.VideoFrame.from_ndarray(img, format="bgr24")
-
 def main():
-    # Load CSS
+    """Main Streamlit application"""
     load_css()
     
     # Initialize session state
@@ -302,100 +145,86 @@ def main():
     
     if 'detection_settings' not in st.session_state:
         st.session_state.detection_settings = {
-            'license_plates': True,
-            'street_signs': True,
+            'license_plates': False,
+            'street_signs': False,
             'block_numbers': False
         }
+    
+    processor = get_processor()
     
     # Header
     st.markdown("""
     <div class="main-header">
         <div class="logo-section">
-            <div class="logo">🛡️</div>
+            <div style="font-size: 2rem; color: #8b5cf6;">🛡️</div>
             <div>
-                <div class="app-title">StreamSafe</div>
-                <div class="app-subtitle">Live Privacy Protection</div>
+                <div style="font-size: 1.5rem; font-weight: bold; color: #ffffff; margin: 0;">StreamSafe</div>
+                <div style="font-size: 0.9rem; color: #9ca3af; margin: 0;">Live Privacy Protection with Ultra-Robust Detection</div>
             </div>
         </div>
-        <div class="status-indicator">
+        <div style="display: flex; align-items: center; gap: 0.5rem; padding: 0.5rem 1rem; background: rgba(16, 185, 129, 0.1); border: 1px solid #10b981; border-radius: 8px; color: #10b981; font-weight: 500;">
             <span>🟢</span>
             <span>Ready</span>
         </div>
     </div>
     """, unsafe_allow_html=True)
     
-    # Main layout
-    col1, col2 = st.columns([1, 1])
+    # Video Stream Section - Using columns to center and control size
+    st.markdown("""
+    <div class="video-container">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+            <h3 style="margin: 0; color: white;">🔴 Live Privacy-Protected Stream</h3>
+            <span class="ai-powered-badge">AI-Powered</span>
+        </div>
+    """, unsafe_allow_html=True)
     
-    with col1:
-        # Original Feed
-        st.markdown("""
-        <div class="video-container">
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
-                <h3 style="margin: 0; color: white;">Original Feed</h3>
-                <span class="offline-badge">Offline</span>
-            </div>
-        """, unsafe_allow_html=True)
-        
-        # WebRTC streamer for original feed
+    # Update processor with current settings
+    processor.update_detection_settings(st.session_state.detection_settings)
+    
+    # Center the video player using columns
+    col1, col2, col3 = st.columns([1, 2, 1])
+    
+    with col2:  # Video player in center column
+        # WebRTC streamer with smaller size
         webrtc_ctx = webrtc_streamer(
-            key="original_feed",
-            video_processor_factory=VideoProcessor,
+            key="privacy_protected_feed",
+            video_processor_factory=lambda: processor,
             rtc_configuration=RTCConfiguration({"iceServers": [{"urls": ["stun:stun.l.google.com:19302"]}]}),
-            media_stream_constraints={"video": True, "audio": False},
+            media_stream_constraints={
+                "video": {
+                    "width": {"ideal": 640, "max": 640},
+                    "height": {"ideal": 480, "max": 480}
+                }, 
+                "audio": False
+            },
             async_processing=True,
         )
-        
-        st.markdown("</div>", unsafe_allow_html=True)
     
-    with col2:
-        # Privacy Protected Feed
-        st.markdown("""
-        <div class="video-container">
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
-                <h3 style="margin: 0; color: white;">Privacy Protected</h3>
-                <span class="online-badge">Online</span>
-            </div>
-        """, unsafe_allow_html=True)
-        
-        # Processed feed placeholder (will show processed video when backend is integrated)
-        st.markdown("""
-        <div class="video-placeholder">
-            <div class="play-button">▶</div>
-            <div>Processed feed will appear here</div>
-        </div>
-        """, unsafe_allow_html=True)
-        
-        st.markdown("</div>", unsafe_allow_html=True)
+    st.markdown("</div>", unsafe_allow_html=True)
     
     # Stream Controls
-    st.markdown("""
-    <div class="control-section">
-        <h3 style="margin: 0 0 1rem 0; color: white;">Stream Controls</h3>
-    """, unsafe_allow_html=True)
+    st.markdown("""<div class="control-section"><h3 style="margin: 0 0 1rem 0; color: white;">Stream Controls</h3>""", unsafe_allow_html=True)
     
     col_start, col_external = st.columns([4, 1])
     
     with col_start:
         if st.button("🎬 Start Stream", key="start_stream", help="Start live streaming"):
             st.session_state.live_state.start_stream()
-            st.success("Stream started!")
+            st.success("✅ Stream started! Toggle privacy features below to see real-time effects.")
     
     with col_external:
         if st.button("🔗 External", key="external", help="External stream settings"):
             st.info("External streaming options coming soon!")
     
-    st.markdown("""
-    <div class="webcam-status">📹 Webcam Inactive</div>
-    </div>
-    """, unsafe_allow_html=True)
+    webcam_status = "📹 Webcam Active - Privacy Protection ON" if webrtc_ctx.state.playing else "📹 Click Start Stream to begin"
+    st.markdown(f"""<div style="text-align: center; color: #9ca3af; margin-top: 1rem; font-size: 0.9rem;">{webcam_status}</div></div>""", unsafe_allow_html=True)
     
-    # Privacy Detection Settings
+    # Privacy Detection Controls
     st.markdown("""
     <div class="detection-card">
-        <div class="detection-header">
-            <div class="detection-title">Privacy Detection</div>
-            <div class="ai-powered-badge">AI-Powered</div>
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;">
+            <div style="font-size: 1.2rem; font-weight: 600; color: #ffffff;">Privacy Detection Controls</div>
+            <div class="ai-powered-badge">Ultra-Robust AI</div>
         </div>
     """, unsafe_allow_html=True)
     
@@ -405,19 +234,19 @@ def main():
             'key': 'license_plates',
             'icon': '🚗',
             'title': 'License Plates',
-            'description': 'Hide vehicle license plates'
+            'description': 'YOLO-based vehicle license plate detection'
         },
         {
             'key': 'street_signs',
             'icon': '📍',
             'title': 'Street Signs',
-            'description': 'Blur street name signs'
+            'description': 'Singapore street sign detection'
         },
         {
             'key': 'block_numbers',
             'icon': '🏠',
             'title': 'Block Numbers',
-            'description': 'Hide building numbers'
+            'description': 'EasyOCR Singapore block number detection'
         }
     ]
     
@@ -436,48 +265,103 @@ def main():
             """, unsafe_allow_html=True)
         
         with col_toggle:
-            st.session_state.detection_settings[option['key']] = st.toggle(
+            new_value = st.toggle(
                 "",
                 value=st.session_state.detection_settings[option['key']],
                 key=f"toggle_{option['key']}",
                 label_visibility="collapsed"
             )
+            
+            if new_value != st.session_state.detection_settings[option['key']]:
+                st.session_state.detection_settings[option['key']] = new_value
+                processor.update_detection_settings(st.session_state.detection_settings)
+                
+                status = "enabled" if new_value else "disabled"
+                st.toast(f"🛡️ {option['title']} {status}", icon="✅" if new_value else "⚪")
     
     st.markdown("""
-    <div class="detection-note">
-        Detection settings can be adjusted during live streaming
+    <div style="text-align: center; color: #6b7280; margin-top: 1.5rem; font-size: 0.85rem;">
+        ⚡ Detection settings update in real-time - toggle during streaming to see immediate effects!
     </div>
     </div>
     """, unsafe_allow_html=True)
     
-    # Stats sidebar (optional)
-    with st.sidebar:
-        st.header("📊 Stream Stats")
+    # Instructions
+    st.markdown("---")
+    st.markdown("### 📱 How to Use StreamSafe")
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        st.markdown("""
+        **🚀 Quick Start:**
+        1. Click **"Start"** above
+        2. Allow camera access when prompted
+        3. Toggle privacy features in real-time
+        4. Watch AI blur sensitive information live!
         
-        if st.session_state.live_state.is_streaming:
-            st.metric("Status", "🟢 Live")
-            st.metric("FPS", f"{st.session_state.live_state.fps:.1f}")
-            st.metric("Latency", f"{st.session_state.live_state.latency:.0f}ms")
-            st.metric("Detections", st.session_state.live_state.detection_count)
+        **📱 For DroidCam:**
+        - Install DroidCam on phone + computer
+        - Connect via same WiFi network
+        - Use browser camera access (this interface)
+        """)
+    
+    with col2:
+        st.markdown("""
+        **🛡️ Privacy Features:**
+        - **🚗 License Plates**
+        - **🛑 Street Signs**
+        - **🏠 Block Numbers**
+        
+        **⚡ Performance:**
+        - Singapore-specific optimizations
+        """)
+    
+    # Sidebar
+    with st.sidebar:
+        st.header("📊 Stream Status")
+        
+        if webrtc_ctx.state.playing:
+            st.success("🟢 Stream Active")
+            st.metric("Camera", "Live")
         else:
-            st.metric("Status", "⚫ Offline")
-            st.metric("FPS", "0.0")
-            st.metric("Latency", "0ms")
-            st.metric("Detections", "0")
+            st.info("⚫ Stream Inactive")  
+            st.metric("Camera", "Offline")
         
         st.markdown("---")
-        st.markdown("### 🔧 Quick Settings")
+        st.markdown("### 🛡️ Active Protections")
         
-        quality = st.selectbox("Stream Quality", ["720p", "1080p", "4K"], index=0)
-        bitrate = st.slider("Bitrate (Mbps)", 1, 10, 5)
+        active_protections = []
+        if st.session_state.detection_settings['license_plates']:
+            active_protections.append("🚗 License Plates (YOLO)")
+        if st.session_state.detection_settings['street_signs']:
+            active_protections.append("📍 Street Signs (HSV)")
+        if st.session_state.detection_settings['block_numbers']:
+            active_protections.append("🏠 Block Numbers (OCR)")
         
-        if st.button("Reset Settings"):
+        if active_protections:
+            for protection in active_protections:
+                st.write(f"✅ {protection}")
+            st.info(f"🔥 {len(active_protections)} AI protection(s) active!")
+        else:
+            st.write("⚪ No protections active")
+            st.info("Toggle features above to enable AI privacy protection")
+        
+        st.markdown("---")
+        st.markdown("### 🔧 Performance Info")
+        st.write("**🎯 Detection Rates:**")
+        st.write("• License Plates: Real-time")
+        st.write("• Street Signs: Every 15 frames")  
+        st.write("• Block Numbers: Every 30 frames")
+        
+        if st.button("🔄 Reset All Settings", help="Turn off all privacy protections"):
             st.session_state.detection_settings = {
-                'license_plates': True,
-                'street_signs': True,
+                'license_plates': False,
+                'street_signs': False,
                 'block_numbers': False
             }
-            st.experimental_rerun()
+            processor.update_detection_settings(st.session_state.detection_settings)
+            st.rerun()
 
 if __name__ == "__main__":
     main()
