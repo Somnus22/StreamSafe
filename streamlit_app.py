@@ -14,7 +14,6 @@ import sys
 from streamlit_webrtc import webrtc_streamer, VideoProcessorBase, RTCConfiguration
 import av
 
-# Import our privacy processing logic
 from privacy_processor import StreamSafeProcessor
 
 # Install requirements

@@ -6,5 +6,5 @@ pyarrow==15.0.2
 opencv-python==4.9.0.80
 # optional
 ultralytics
-# optional (pick the right wheel for your platform)
+# optional 
 # torch
